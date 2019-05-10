@@ -99,6 +99,7 @@ class P1Reader {
       this->state = State::DISABLED_STATE;
       if (!this->_available)
         this->buffer = "";
+        this->realbuffer = "";
       // Clear any pending bytes
       while(this->stream->read() >= 0) /* nothing */;
     }
@@ -125,8 +126,11 @@ class P1Reader {
             return false;
 
           char buf[CrcParser::CRC_LEN];
-          for (uint8_t i = 0; i < CrcParser::CRC_LEN; ++i)
+          for (uint8_t i = 0; i < CrcParser::CRC_LEN; ++i) {
             buf[i] = this->stream->read();
+            realbuffer.concat((char)buf[i]); // Add the value CRC to the realbuffer too
+          }
+          this->lastrealbuffer = realbuffer; // Add last full telegram to lastrealbuffer
 
           ParseResult<uint16_t> crc = CrcParser::parse(buf, buf + lengthof(buf));
 
@@ -157,11 +161,14 @@ class P1Reader {
                 this->state = State::READING_STATE;
                 // Include the / in the CRC
                 this->crc = _crc16_update(0, c);
+                this->clearReal();
                 this->clear();
+                realbuffer.concat('/');
               }
               break;
             case State::READING_STATE:
               // Include the ! in the CRC
+              realbuffer.concat((char)c);
               this->crc = _crc16_update(this->crc, c);
               if (c == '!')
                 this->state = State::CHECKSUM_STATE;
@@ -186,6 +193,13 @@ class P1Reader {
      */
     const String &raw() {
       return buffer;
+    }
+
+    /**
+     * Returns the Full telegram data read so far.
+     */
+    const String &realRaw() {
+      return lastrealbuffer;
     }
 
     /**
@@ -221,6 +235,17 @@ class P1Reader {
       }
     }
 
+    /**
+     * Clear any complete message from the buffer.
+     */
+    void clearReal() {
+      if (_available) {
+        realbuffer = "";
+      }
+    }
+
+
+
   protected:
     Stream *stream;
     uint8_t req_pin;
@@ -234,8 +259,10 @@ class P1Reader {
     bool once;
     State state;
     String buffer;
+    String realbuffer;
+    String lastrealbuffer;
     uint16_t crc;
-};
+}; // class P1Reader
 
 } // namespace dsmr
 
